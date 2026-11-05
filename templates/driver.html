@@ -1,0 +1,134 @@
+{% extends "app_shell.html" %}
+{% from "_ui.html" import icon, badge, plate, route, stepper, empty, kpi, csrf, maps_url %}
+{% block title %}Driver{% endblock %}
+{% block portal %}Driver portal{% endblock %}
+{% block page_title %}Today{% endblock %}
+
+{% set n_assigned = trips|selectattr('status','equalto','assigned')|list|length %}
+{% set n_active = trips|selectattr('status','equalto','in_progress')|list|length %}
+{% set n_done = trips|selectattr('status','equalto','completed')|list|length %}
+{% set STEPS = ['Assigned', 'In transit', 'Delivered'] %}
+
+{% block nav %}
+  <a href="#today" data-tab="today" data-title="Today">{{ icon('dashboard') }}<span>Today</span></a>
+  <a href="#trips" data-tab="trips" data-title="My trips">{{ icon('route') }}<span>My trips</span>{% if n_assigned + n_active %}<span class="nav-count">{{ n_assigned + n_active }}</span>{% endif %}</a>
+{% endblock %}
+
+{% macro trip_actions(t) %}
+  {% if t.status == 'assigned' %}
+    <form method="post" action="{{ url_for('update_trip', trip_id=t.id) }}">
+      {{ csrf() }}<input type="hidden" name="status" value="in_progress">
+      <button class="btn btn-primary btn-lg" type="submit">{{ icon('play') }} Start trip</button>
+    </form>
+  {% elif t.status == 'in_progress' %}
+    <form method="post" action="{{ url_for('update_trip', trip_id=t.id) }}"
+          data-confirm="The trip will be marked as delivered and {{ t.vehicle_number }} will be released for the next job."
+          data-confirm-title="Mark trip #{{ t.id }} as delivered?" data-confirm-ok="Mark delivered">
+      {{ csrf() }}<input type="hidden" name="status" value="completed">
+      <button class="btn btn-ok btn-lg" type="submit">{{ icon('check') }} Mark delivered</button>
+    </form>
+  {% endif %}
+{% endmacro %}
+
+{% block panes %}
+<!-- TODAY -->
+<section class="pane" id="pane-today">
+  {% set live = (trips|selectattr('status','equalto','in_progress')|list) + (trips|selectattr('status','equalto','assigned')|list) %}
+  {% set cur = live|first if live else none %}
+
+  <div class="hero">
+    {% if cur %}
+      <p style="margin:0;color:#ef8a53;font-weight:600">{{ 'On the road now' if cur.status == 'in_progress' else 'Up next' }}</p>
+      <h1 style="margin-top:6px;max-width:none">{{ cur.from_location }} <span style="color:#6f8aa4">to</span> {{ cur.to_location }}</h1>
+      <div class="hero-trip">
+        <div>Client<strong>{{ cur.client_name }}</strong></div>
+        <div>Goods<strong>{{ cur.goods_type }}</strong></div>
+        <div>Vehicle<strong>{{ cur.vehicle_name }} {{ plate(cur.vehicle_number) }}</strong></div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:20px;position:relative;z-index:1">
+        {{ trip_actions(cur) }}
+        <a class="btn btn-lg" href="{{ maps_url(cur.from_location, cur.to_location) }}" target="_blank" rel="noopener">{{ icon('navigate') }} Navigate</a>
+      </div>
+    {% else %}
+      <h1>{{ greet }}, {{ session.name.split()[0] }}.</h1>
+      <p>You have no trips waiting. New assignments from dispatch will show up here.</p>
+    {% endif %}
+  </div>
+
+  <div class="kpis">
+    {{ kpi('Waiting to start', n_assigned, 'Assigned to you', 'clipboard', 't-info') }}
+    {{ kpi('In transit', n_active, 'Currently on the road', 'truck', 't-violet') }}
+    {{ kpi('Delivered', n_done, 'Completed trips', 'check-circle', 't-ok') }}
+  </div>
+
+  {% if live|length > 1 %}
+  <div class="card card-flush">
+    <div class="card-h"><div><h3>Queue</h3><div class="sub">Your other open trips</div></div><a class="btn btn-sm" href="#trips">View all</a></div>
+    <div class="mini-list">
+      {% for t in live[1:] %}
+      <div class="mini-row">
+        <div class="l"><b>{{ t.from_location }} to {{ t.to_location }}</b><span>{{ t.goods_type }} for {{ t.client_name }}</span></div>
+        {{ badge(t.status) }}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</section>
+
+<!-- TRIPS -->
+<section class="pane" id="pane-trips">
+  <div class="ph"><div><h1>My trips</h1><p>Start a trip when you leave, and mark it delivered when you arrive.</p></div></div>
+
+  {% if trips %}
+  <div data-filter-root>
+    <div class="card" style="margin-bottom:16px">
+      <div class="toolbar" style="border-bottom:0">
+        <div class="search"><span class="sr-only">Search trips</span>{{ icon('search') }}<input class="inp" data-search placeholder="Search by place, client or goods"></div>
+        <div class="chips" role="group" aria-label="Filter by status">
+          <button class="chip" data-chip="all" aria-pressed="true">All<span class="n">{{ trips|length }}</span></button>
+          <button class="chip" data-chip="assigned" aria-pressed="false">Assigned<span class="n">{{ n_assigned }}</span></button>
+          <button class="chip" data-chip="in_progress" aria-pressed="false">In transit<span class="n">{{ n_active }}</span></button>
+          <button class="chip" data-chip="completed" aria-pressed="false">Delivered<span class="n">{{ n_done }}</span></button>
+        </div>
+        <span class="grow"></span><span class="count-label" data-count></span>
+      </div>
+    </div>
+
+    <div class="list">
+      {% for t in trips %}
+      {% set stage = 0 if t.status == 'assigned' else (1 if t.status == 'in_progress' else 3) %}
+      <article class="card ship" data-item data-status="{{ t.status }}">
+        <div class="ship-top">
+          <div>
+            <div class="ship-id">Trip #{{ t.id }} &middot; assigned {{ t.created_at|dmy }}</div>
+            <div class="ship-route">{{ route(t.from_location, t.to_location) }}</div>
+          </div>
+          {{ badge(t.status, 'Delivered' if t.status == 'completed' else none) }}
+        </div>
+        {{ stepper(STEPS, stage) }}
+        <dl class="facts" style="margin:0">
+          <div class="fact"><dt>Client</dt><dd>{{ t.client_name }}</dd></div>
+          <div class="fact"><dt>Goods</dt><dd>{{ t.goods_type }}</dd></div>
+          <div class="fact"><dt>Vehicle</dt><dd>{{ t.vehicle_name }} {{ plate(t.vehicle_number) }}</dd></div>
+          {% if t.status == 'completed' and t.updated_at %}<div class="fact"><dt>Delivered on</dt><dd>{{ t.updated_at|dmyt }}</dd></div>{% endif %}
+        </dl>
+        {% if t.status != 'completed' %}
+        <div class="ship-foot">
+          <div class="btn-row">
+            <a class="btn" href="{{ maps_url(t.from_location, t.to_location) }}" target="_blank" rel="noopener">{{ icon('navigate') }} Navigate</a>
+            {% if t.client_phone %}<a class="btn" href="tel:{{ t.client_phone }}">{{ icon('phone') }} Call client</a>{% endif %}
+          </div>
+          {{ trip_actions(t) }}
+        </div>
+        {% endif %}
+      </article>
+      {% endfor %}
+      <div class="card" data-none hidden>{{ empty('search', 'No trips match', 'Try a different search or filter.') }}</div>
+    </div>
+  </div>
+  {% else %}
+  <div class="card">{{ empty('route', 'No trips assigned yet', 'When dispatch assigns you a trip it will appear here.') }}</div>
+  {% endif %}
+</section>
+{% endblock %}

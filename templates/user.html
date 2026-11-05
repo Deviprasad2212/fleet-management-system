@@ -1,0 +1,179 @@
+{% extends "app_shell.html" %}
+{% from "_ui.html" import icon, badge, plate, route, stepper, empty, kpi, csrf, avatar %}
+{% block title %}My shipments{% endblock %}
+{% block portal %}Client portal{% endblock %}
+{% block page_title %}Home{% endblock %}
+
+{% set STEPS = ['Requested', 'Assigned', 'On the way', 'Delivered'] %}
+{% set LABEL = {'pending': 'Awaiting driver', 'assigned': 'Driver assigned', 'in_progress': 'On the way', 'completed': 'Delivered'} %}
+{% set GOODS = [('Electronics','cpu'), ('Furniture','sofa'), ('Clothing','shirt'), ('Food & Beverages','utensils'), ('Machinery','wrench'), ('Documents','file'), ('Other','box')] %}
+{% set billed = my_requests|rejectattr('price','none')|list %}
+{% set paid_sum = billed|selectattr('payment_status','equalto','paid')|sum(attribute='price') %}
+{% set total_sum = billed|sum(attribute='price') %}
+{% set open_reqs = my_requests|rejectattr('status','equalto','completed')|list %}
+{% set n_pending = my_requests|selectattr('status','equalto','pending')|list|length %}
+{% set n_done = my_requests|selectattr('status','equalto','completed')|list|length %}
+{% set n_transit = my_requests|selectattr('trip_status','equalto','in_progress')|list|length %}
+
+{% block nav %}
+  <a href="#home" data-tab="home" data-title="Home">{{ icon('dashboard') }}<span>Home</span></a>
+  <a href="#new" data-tab="new" data-title="New request">{{ icon('plus') }}<span>New request</span></a>
+  <div class="nav-group">Shipments</div>
+  <a href="#shipments" data-tab="shipments" data-title="My shipments">{{ icon('package') }}<span>My shipments</span>{% if open_reqs %}<span class="nav-count">{{ open_reqs|length }}</span>{% endif %}</a>
+  <a href="#bills" data-tab="bills" data-title="Bills">{{ icon('receipt') }}<span>Bills</span></a>
+{% endblock %}
+
+{# one shipment card, used on Home and on My shipments #}
+{% macro ship_card(r, compact=false) %}
+  {% set key = r.trip_status or r.status %}
+  {% set stage = {'pending': 0, 'assigned': 1, 'in_progress': 2, 'completed': 4}[key] %}
+  <article class="card ship" data-item data-status="{{ key }}">
+    <div class="ship-top">
+      <div>
+        <div class="ship-id">Request #{{ r.id }} &middot; {{ r.created_at|dmy }}</div>
+        <div class="ship-route">{{ route(r.from_location, r.to_location) }}</div>
+      </div>
+      {{ badge(key, LABEL[key]) }}
+    </div>
+    {{ stepper(STEPS, stage) }}
+    <dl class="facts" style="margin:0">
+      <div class="fact"><dt>Goods</dt><dd>{{ r.goods_type }}</dd></div>
+      <div class="fact"><dt>Driver</dt><dd>{{ r.driver_name or 'Not assigned yet' }}</dd></div>
+      <div class="fact"><dt>Vehicle</dt><dd>{% if r.vehicle_number %}{{ plate(r.vehicle_number) }}{% else %}<span class="faint">Not assigned yet</span>{% endif %}</dd></div>
+      {% if not compact %}
+      <div class="fact"><dt>Amount</dt><dd>{% if r.price is not none %}{{ r.price|inr }} {{ badge(r.payment_status or 'unpaid') }}{% else %}<span class="faint">Awaiting quote</span>{% endif %}</dd></div>
+      {% endif %}
+    </dl>
+  </article>
+{% endmacro %}
+
+{% block panes %}
+<!-- HOME -->
+<section class="pane" id="pane-home">
+  <div class="hero">
+    <h1>{{ greet }}, {{ session.name.split()[0] }}.</h1>
+    {% if open_reqs %}
+      <p>You have {{ open_reqs|length }} open shipment{{ 's' if open_reqs|length != 1 }}. Track progress below or book another pickup.</p>
+    {% else %}
+      <p>Book a pickup and we will assign a driver and vehicle. You can follow every step from here.</p>
+    {% endif %}
+    <a class="btn btn-primary btn-lg" href="#new">{{ icon('plus') }} Request a pickup</a>
+  </div>
+
+  <div class="kpis">
+    {{ kpi('Awaiting driver', n_pending, 'Requests being scheduled', 'clipboard', 't-warn', alert=(n_pending > 0)) }}
+    {{ kpi('On the way', n_transit, 'Shipments in transit', 'truck', 't-violet') }}
+    {{ kpi('Delivered', n_done, 'Completed shipments', 'check-circle', 't-ok') }}
+    {{ kpi('Outstanding', ((total_sum - paid_sum)|inr(0)) if billed else '—', ('Across ' ~ (billed|rejectattr('payment_status','equalto','paid')|list|length) ~ ' unpaid bill(s)') if billed else 'No bills yet', 'rupee', 't-bad' if (total_sum - paid_sum) > 0 else 't-ok') }}
+  </div>
+
+  <div class="ph" style="margin-bottom:14px"><div><h1 style="font-size:20px">Active shipments</h1></div><a class="btn btn-sm" href="#shipments">View all shipments</a></div>
+  {% if open_reqs %}
+    <div class="list">{% for r in open_reqs[:3] %}{{ ship_card(r, compact=true) }}{% endfor %}</div>
+  {% else %}
+    <div class="card">{% call empty('package', 'No active shipments', 'Everything you have booked has been delivered.') %}<a class="btn btn-primary" href="#new">{{ icon('plus') }} Request a pickup</a>{% endcall %}</div>
+  {% endif %}
+</section>
+
+<!-- NEW REQUEST -->
+<section class="pane" id="pane-new">
+  <div class="ph"><div><h1>Request a pickup</h1><p>Tell us where the goods are going. Dispatch will assign a driver and vehicle.</p></div></div>
+  <div class="card" style="max-width:720px">
+    <form method="post" action="{{ url_for('submit_request') }}">
+      {{ csrf() }}
+      <div class="card-b" style="display:grid;gap:22px">
+        <div class="form-grid">
+          <div class="field"><label for="from_location">Pickup location</label><input class="inp" id="from_location" name="from_location" placeholder="e.g. Hinjewadi, Pune" required maxlength="200"></div>
+          <div class="field"><label for="to_location">Delivery location</label><input class="inp" id="to_location" name="to_location" placeholder="e.g. Andheri, Mumbai" required maxlength="200"></div>
+          <div class="span-2"><div class="route-preview" data-route-preview aria-live="polite"></div></div>
+        </div>
+        <div class="field">
+          <span class="lbl" id="goods-lbl">What are you shipping?</span>
+          <div class="goods" role="radiogroup" aria-labelledby="goods-lbl">
+            {% for g, ic in GOODS %}
+            <label><input type="radio" name="goods_type" value="{{ g }}" {{ 'required' if loop.first }}><span>{{ icon(ic) }}{{ g }}</span></label>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      <div class="modal-f" style="border-top:1px solid var(--line);padding-top:16px">
+        <a class="btn" href="#home">Cancel</a>
+        <button class="btn btn-primary" type="submit">Send request</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- SHIPMENTS -->
+<section class="pane" id="pane-shipments">
+  <div class="ph">
+    <div><h1>My shipments</h1><p>Every request you have made, with live status.</p></div>
+    <div class="ph-actions"><a class="btn btn-primary" href="#new">{{ icon('plus') }} New request</a></div>
+  </div>
+  {% if my_requests %}
+  <div data-filter-root>
+    <div class="card" style="margin-bottom:16px">
+      <div class="toolbar" style="border-bottom:0">
+        <div class="search"><span class="sr-only">Search shipments</span>{{ icon('search') }}<input class="inp" data-search placeholder="Search by place, goods or driver"></div>
+        <div class="chips" role="group" aria-label="Filter by status">
+          <button class="chip" data-chip="all" aria-pressed="true">All<span class="n">{{ my_requests|length }}</span></button>
+          <button class="chip" data-chip="pending" aria-pressed="false">Awaiting driver</button>
+          <button class="chip" data-chip="assigned" aria-pressed="false">Assigned</button>
+          <button class="chip" data-chip="in_progress" aria-pressed="false">On the way</button>
+          <button class="chip" data-chip="completed" aria-pressed="false">Delivered</button>
+        </div>
+        <span class="grow"></span><span class="count-label" data-count></span>
+      </div>
+    </div>
+    <div class="list">
+      {% for r in my_requests %}{{ ship_card(r) }}{% endfor %}
+      <div class="card" data-none hidden>{{ empty('search', 'No shipments match', 'Try a different search or filter.') }}</div>
+    </div>
+  </div>
+  {% else %}
+  <div class="card">{% call empty('package', 'No shipments yet', 'Your first request only takes a minute.') %}<a class="btn btn-primary" href="#new">{{ icon('plus') }} Request a pickup</a>{% endcall %}</div>
+  {% endif %}
+</section>
+
+<!-- BILLS -->
+<section class="pane" id="pane-bills">
+  <div class="ph"><div><h1>Bills</h1><p>An invoice appears here once dispatch has priced your trip.</p></div></div>
+  {% if billed %}
+    <div class="card" style="margin-bottom:18px"><div class="card-b bill-summary">
+      <dl style="margin:0"><dt>Total billed</dt><dd>{{ total_sum|inr }}</dd></dl>
+      <dl style="margin:0"><dt>Paid</dt><dd class="t-ok-text">{{ paid_sum|inr }}</dd></dl>
+      <dl style="margin:0"><dt>Outstanding</dt><dd class="{{ 't-bad-text' if (total_sum - paid_sum) > 0 }}">{{ (total_sum - paid_sum)|inr }}</dd></dl>
+    </div></div>
+    <div class="list">
+      {% for r in billed %}
+      {% set paid = r.payment_status == 'paid' %}
+      <article class="card invoice" id="inv-{{ r.id }}">
+        <div class="invoice-h">
+          <div><h3>Invoice for request #{{ r.id }}</h3><div class="muted" style="font-size:13px;margin-top:2px">{{ r.created_at|dmy }}</div></div>
+          {{ badge('paid' if paid else 'unpaid') }}
+        </div>
+        <div class="invoice-b">
+          <dl style="margin:0">
+            <div class="dl-row"><dt>Pickup</dt><dd>{{ r.from_location }}</dd></div>
+            <div class="dl-row"><dt>Delivery</dt><dd>{{ r.to_location }}</dd></div>
+            <div class="dl-row"><dt>Goods</dt><dd>{{ r.goods_type }}</dd></div>
+            <div class="dl-row"><dt>Driver</dt><dd>{{ r.driver_name or '—' }}</dd></div>
+            <div class="dl-row"><dt>Vehicle</dt><dd>{% if r.vehicle_number %}{{ plate(r.vehicle_number) }}{% else %}—{% endif %}</dd></div>
+            <div class="dl-row"><dt>Trip status</dt><dd>{{ badge(r.trip_status, LABEL[r.trip_status]) if r.trip_status else '—' }}</dd></div>
+          </dl>
+          <div class="invoice-total"><span>Total amount</span><b>{{ r.price|inr }}</b></div>
+          {% if paid %}
+            <div class="notice ok">{{ icon('check-circle') }}<span>Payment received. Thank you.</span></div>
+          {% else %}
+            <div class="notice warn">{{ icon('alert') }}<span>Payment is pending. Please contact dispatch to settle this amount.</span></div>
+          {% endif %}
+          <div class="no-print" style="margin-top:16px"><button class="btn btn-sm" type="button" data-print="inv-{{ r.id }}">{{ icon('printer') }} Print invoice</button></div>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="card">{{ empty('receipt', 'No bills yet', 'Once a trip is priced, its invoice will appear here.') }}</div>
+  {% endif %}
+</section>
+{% endblock %}

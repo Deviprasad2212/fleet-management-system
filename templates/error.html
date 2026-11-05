@@ -1,0 +1,24 @@
+{% from "_ui.html" import icon %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }} · FleetMgr</title>
+  <script>try{var t=localStorage.getItem('fm-theme');if(t)document.documentElement.dataset.theme=t;else if(matchMedia('(prefers-color-scheme: dark)').matches)document.documentElement.dataset.theme='dark'}catch(e){}</script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Figtree:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+{% include "_sprite.html" %}
+<main style="min-height:100vh;display:grid;place-items:center;padding:24px">
+  <div class="card" style="max-width:480px;width:100%;padding:40px 32px;text-align:center">
+    <div class="empty-ico" style="width:56px;height:56px;border-radius:16px;margin:0 auto 18px;display:grid;place-items:center;background:var(--brand-soft);color:var(--brand-strong)">{{ icon('route') }}</div>
+    <div class="muted" style="font-weight:600">Error {{ code }}</div>
+    <h1 style="font-size:26px;margin:6px 0 10px">{{ title }}</h1>
+    <p class="muted" style="margin-bottom:24px">{{ text }}</p>
+    <a class="btn btn-primary" href="{{ url_for('index') }}">Back to FleetMgr</a>
+  </div>
+</main>
+</body>
+</html>

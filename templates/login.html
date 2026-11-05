@@ -1,0 +1,39 @@
+{% extends "auth_base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block form %}
+<h2>Welcome back</h2>
+<p class="lead">Sign in to manage your fleet and shipments.</p>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for c, m in messages %}<div class="alert {{ c }}" role="alert" style="margin-bottom:16px">{{ icon('alert-circle' if c == 'error' else 'check-circle') }}<span>{{ m }}</span></div>{% endfor %}
+{% endwith %}
+
+<form method="post" novalidate>
+  {{ csrf() }}
+  <div class="field">
+    <label for="email">Email address</label>
+    <input class="inp" id="email" type="email" name="email" placeholder="you@company.com" autocomplete="email" required autofocus>
+  </div>
+  <div class="field">
+    <label for="password">Password</label>
+    <div class="input-icon">
+      <input class="inp" id="password" type="password" name="password" placeholder="Enter your password" autocomplete="current-password" required>
+      <button type="button" data-reveal aria-label="Show password">{{ icon('eye') }}</button>
+    </div>
+  </div>
+  <button class="btn btn-primary btn-lg btn-block" type="submit">Sign in</button>
+</form>
+
+<p class="auth-foot">New client? <a href="{{ url_for('register') }}">Create an account</a></p>
+
+{% if demo_mode %}
+<div class="demo">
+  <p>Demo mode is on. Pick a role to fill in the sign-in form.</p>
+  <div class="demo-chips">
+    <button type="button" class="chip" data-demo data-email="admin@fleet.com" data-password="admin123">{{ icon('shield', 'ic-sm') }} Admin</button>
+    <button type="button" class="chip" data-demo data-email="alice@example.com" data-password="user123">{{ icon('package', 'ic-sm') }} Client</button>
+    <button type="button" class="chip" data-demo data-email="charlie@fleet.com" data-password="driver123">{{ icon('truck', 'ic-sm') }} Driver</button>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

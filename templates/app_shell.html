@@ -1,0 +1,73 @@
+{% from "_ui.html" import icon, avatar %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1b2b">
+  <title>{% block title %}Dashboard{% endblock %} · FleetMgr</title>
+  <script>try{var t=localStorage.getItem('fm-theme');if(t)document.documentElement.dataset.theme=t;else if(matchMedia('(prefers-color-scheme: dark)').matches)document.documentElement.dataset.theme='dark'}catch(e){}</script>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23ef6a22'/%3E%3Cpath d='M7 21V11h11v10M18 14h4l3 3v4h-7' stroke='white' stroke-width='2' fill='none' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Figtree:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+{% include "_sprite.html" %}
+<div class="shell">
+  <aside class="side" id="sidebar" aria-label="Main navigation">
+    <div class="brand">
+      <div class="brand-mark">{{ icon('truck') }}</div>
+      <div><b>FleetMgr</b><small>{% block portal %}Portal{% endblock %}</small></div>
+    </div>
+    <nav class="nav">{% block nav %}{% endblock %}</nav>
+    <div class="side-user">
+      <span class="av av-side">{{ session.name|initials }}</span>
+      <div class="who"><strong>{{ session.name }}</strong><span>{{ 'Client' if session.role == 'user' else session.role|capitalize }}</span></div>
+      <a class="btn btn-icon btn-sm" href="{{ url_for('logout') }}" title="Sign out" aria-label="Sign out">{{ icon('logout') }}</a>
+    </div>
+  </aside>
+  <div class="scrim"></div>
+
+  <div class="main">
+    <header class="top">
+      <button class="btn btn-ghost btn-icon menu-btn" data-menu aria-label="Open menu">{{ icon('menu') }}</button>
+      <div>
+        <h2 id="page-title">{% block page_title %}Overview{% endblock %}</h2>
+      </div>
+      <span class="date">{{ today_date }}</span>
+      <div class="top-spacer"></div>
+      <span class="clock" title="Local time"><span id="clk">{{ today_time }}</span></span>
+      <button class="btn btn-ghost btn-icon" data-theme-toggle aria-label="Switch theme"></button>
+    </header>
+    <main class="page">{% block panes %}{% endblock %}</main>
+  </div>
+</div>
+
+{% block dialogs %}{% endblock %}
+
+<dialog class="modal" id="confirm-dialog" style="width:min(440px,calc(100vw - 28px))">
+  <div class="modal-b" style="padding-top:24px;grid-template-columns:auto 1fr;gap:16px;align-items:start">
+    <div class="confirm-ico">{{ icon('alert') }}</div>
+    <div><h3 data-confirm-title style="font-size:18px">Are you sure?</h3><p class="muted" data-confirm-text style="margin-top:6px"></p></div>
+  </div>
+  <div class="modal-f">
+    <button type="button" class="btn" data-close data-no-lock>Cancel</button>
+    <button type="button" class="btn btn-primary" data-confirm-ok data-no-lock>Confirm</button>
+  </div>
+</dialog>
+
+<div class="toasts" role="region" aria-label="Notifications">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for c, m in messages %}
+    <div class="toast t-{{ c }}" role="{{ 'alert' if c == 'error' else 'status' }}">
+      {{ icon('alert-circle' if c == 'error' else 'check-circle') }}<p>{{ m }}</p>
+      <button type="button" aria-label="Dismiss">{{ icon('x') }}</button>
+    </div>
+    {% endfor %}
+  {% endwith %}
+</div>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

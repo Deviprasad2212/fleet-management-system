@@ -1,0 +1,62 @@
+{% from "_ui.html" import icon, csrf %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Sign in{% endblock %} · FleetMgr</title>
+  <script>try{var t=localStorage.getItem('fm-theme');if(t)document.documentElement.dataset.theme=t;else if(matchMedia('(prefers-color-scheme: dark)').matches)document.documentElement.dataset.theme='dark'}catch(e){}</script>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23ef6a22'/%3E%3Cpath d='M7 21V11h11v10M18 14h4l3 3v4h-7' stroke='white' stroke-width='2' fill='none' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Figtree:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+{% include "_sprite.html" %}
+<div class="auth">
+  <section class="auth-art" aria-hidden="false">
+    <div class="auth-brand">
+      <div class="brand-mark">{{ icon('truck') }}</div><b>FleetMgr</b>
+    </div>
+
+    <div>
+      <h1>Every load, every mile, accounted for.</h1>
+      <p class="lead">Dispatch drivers, follow each shipment and bill every trip from one place.</p>
+    </div>
+
+    <svg class="auth-map" viewBox="0 0 520 330" role="img" aria-label="Route map showing trips between Nashik, Mumbai and Pune">
+      <path class="road" d="M118 150 C 150 110, 205 80, 300 52"/>
+      <path class="road" d="M300 52 C 330 130, 360 200, 342 278"/>
+      <path id="live-route" class="road-live" d="M342 278 C 270 296, 190 250, 118 150"/>
+      <circle class="pin" cx="118" cy="150" r="8"/>
+      <circle class="pin" cx="300" cy="52" r="8"/>
+      <circle class="pin" cx="342" cy="278" r="8"/>
+      <text x="96" y="182" text-anchor="end">Mumbai</text>
+      <text x="318" y="44">Nashik</text>
+      <text x="362" y="284">Pune</text>
+      <g class="truck">
+        <circle r="13" fill="#ef6a22" opacity=".22"><animate attributeName="r" values="9;17;9" dur="2.4s" repeatCount="indefinite"/></circle>
+        <circle r="6.5" fill="#ef6a22" stroke="#fff" stroke-width="2.5"/>
+        <animateMotion dur="7s" repeatCount="indefinite" rotate="0"><mpath href="#live-route"/></animateMotion>
+      </g>
+    </svg>
+
+    <ul class="auth-points">
+      <li>{{ icon('zap') }}<span>Assign a driver and vehicle in two clicks</span></li>
+      <li>{{ icon('route') }}<span>Clients and drivers see the same live trip status</span></li>
+      <li>{{ icon('receipt') }}<span>Pricing, payments and invoices in one report</span></li>
+    </ul>
+  </section>
+
+  <section class="auth-form">
+    <div class="auth-card">
+      <div class="auth-top"><div class="brand-mark" style="background:var(--brand);color:#fff;border-radius:11px;display:grid;place-items:center">{{ icon('truck') }}</div><b>FleetMgr</b></div>
+      {% block form %}{% endblock %}
+    </div>
+  </section>
+  <button class="btn btn-ghost btn-icon auth-top-bar" data-theme-toggle aria-label="Switch theme"></button>
+</div>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

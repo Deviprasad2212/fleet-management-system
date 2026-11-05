@@ -1,0 +1,435 @@
+{% extends "app_shell.html" %}
+{% from "_ui.html" import icon, badge, plate, route, empty, kpi, csrf, avatar, modal_head %}
+{% block title %}Admin{% endblock %}
+{% block portal %}Admin console{% endblock %}
+{% block page_title %}Overview{% endblock %}
+
+{% macro filters(chips, ph, exp=none, fname='export') %}
+<div class="toolbar">
+  <div class="search"><span class="sr-only">Search</span>{{ icon('search') }}<input class="inp" data-search placeholder="{{ ph }}"></div>
+  {% if chips %}
+  <div class="chips" role="group" aria-label="Filter by status">
+    {% for key, label, n in chips %}<button class="chip" data-chip="{{ key }}" aria-pressed="{{ 'true' if loop.first else 'false' }}">{{ label }}<span class="n">{{ n }}</span></button>{% endfor %}
+  </div>
+  {% endif %}
+  <span class="grow"></span>
+  <span class="count-label" data-count></span>
+  {% if exp %}<button class="btn btn-sm" type="button" data-export="{{ exp }}" data-filename="{{ fname }}">{{ icon('download') }} Export CSV</button>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro none_row(cols, text='Nothing matches your search.') %}
+<tr data-none hidden class="tbl-empty"><td colspan="{{ cols }}">{{ text }}</td></tr>
+{% endmacro %}
+
+{% block nav %}
+  <a href="#overview" data-tab="overview" data-title="Overview">{{ icon('dashboard') }}<span>Overview</span></a>
+  <div class="nav-group">Fleet</div>
+  <a href="#vehicles" data-tab="vehicles" data-title="Vehicles">{{ icon('truck') }}<span>Vehicles</span></a>
+  <a href="#drivers" data-tab="drivers" data-title="Drivers">{{ icon('user') }}<span>Drivers</span></a>
+  <div class="nav-group">Operations</div>
+  <a href="#requests" data-tab="requests" data-title="Requests">{{ icon('package') }}<span>Requests</span>{% if stats.pending %}<span class="nav-count">{{ stats.pending }}</span>{% endif %}</a>
+  <a href="#trips" data-tab="trips" data-title="Trips">{{ icon('route') }}<span>Trips</span></a>
+  <a href="#customers" data-tab="customers" data-title="Customers">{{ icon('users') }}<span>Customers</span></a>
+  <div class="nav-group">Finance</div>
+  <a href="#reports" data-tab="reports" data-title="Reports">{{ icon('chart') }}<span>Reports</span></a>
+{% endblock %}
+
+{% block panes %}
+{% set vc = stats.vehicle_counts %}
+{% set rc = stats.request_counts %}
+
+<!-- ===================== OVERVIEW ===================== -->
+<section class="pane" id="pane-overview">
+  <div class="ph">
+    <div><h1>{{ greet }}, {{ session.name.split()[0] }}.</h1>
+      <p>{% if stats.pending %}{{ stats.pending }} request{{ 's' if stats.pending != 1 }} waiting for a driver.{% else %}Every request has been assigned.{% endif %}</p></div>
+    <div class="ph-actions">
+      <button class="btn" data-open="vehicle-add">{{ icon('plus') }} Add vehicle</button>
+      <button class="btn" data-open="driver-add">{{ icon('plus') }} Add driver</button>
+    </div>
+  </div>
+
+  <div class="kpis">
+    {{ kpi('Awaiting assignment', stats.pending, 'Pending requests', 'package', 't-warn', alert=(stats.pending > 0)) }}
+    {{ kpi('Active trips', stats.active_trips, stats.completed_trips ~ ' delivered so far', 'route', 't-violet') }}
+    {{ kpi('Fleet in use', stats.utilization ~ '%', vc.assigned ~ ' of ' ~ stats.n_vehicles ~ ' vehicles on a job', 'gauge', 't-info') }}
+    {{ kpi('Collected', stats.revenue_paid|inr(0), 'Paid trips', 'rupee', 't-ok') }}
+    {{ kpi('Outstanding', stats.outstanding|inr(0), 'Billed, not yet paid', 'receipt', 't-bad' if stats.outstanding > 0 else 't-ok') }}
+  </div>
+
+  <div class="grid-2" style="margin-bottom:18px">
+    <div class="card">
+      <div class="card-h"><div><h3>Billing, last 6 months</h3><div class="sub">By month the trip was created</div></div></div>
+      <div class="card-b">
+        <div class="chart" data-chart="bars" data-chart-data='{{ stats.monthly|tojson }}'></div>
+        <div class="legend"><span><i style="--c:var(--ok)"></i>Paid</span><span><i style="--c:var(--brand)"></i>Unpaid</span></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h"><div><h3>Requests</h3><div class="sub">All time, by status</div></div></div>
+      <div class="card-b">
+        <div class="donut-wrap">
+          <div class="chart" data-chart="donut" data-unit="requests" data-label="Requests by status"
+               data-chart-data='{{ [{"label":"Pending","value":rc.pending,"color":"--warn"},{"label":"Assigned","value":rc.assigned,"color":"--info"},{"label":"Completed","value":rc.completed,"color":"--ok"}]|tojson }}'></div>
+          <div class="donut-list">
+            <div><i style="--c:var(--warn)"></i>Pending<b>{{ rc.pending }}</b></div>
+            <div><i style="--c:var(--info)"></i>Assigned<b>{{ rc.assigned }}</b></div>
+            <div><i style="--c:var(--ok)"></i>Completed<b>{{ rc.completed }}</b></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-eq">
+    <div class="card card-flush">
+      <div class="card-h"><div><h3>Needs a driver</h3><div class="sub">Oldest requests first</div></div><a class="btn btn-sm" href="#requests">All requests</a></div>
+      {% set waiting = reqs|selectattr('status','equalto','pending')|list|reverse|list %}
+      {% if waiting %}
+      <div class="mini-list">
+        {% for r in waiting[:5] %}
+        <div class="mini-row">
+          <div class="l"><b>{{ r.from_location }} to {{ r.to_location }}</b><span>{{ r.goods_type }} for {{ r.name }} &middot; {{ r.created_at|dmy }}</span></div>
+          <button class="btn btn-primary btn-sm" data-open="assign-dialog" data-action="{{ url_for('assign_trip', req_id=r.id) }}"
+                  data-fill='{{ {"summary_client": r.name, "summary_route": r.from_location ~ " to " ~ r.to_location, "summary_goods": r.goods_type}|tojson }}'>Assign</button>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}{{ empty('check-circle', 'All caught up', 'There are no requests waiting for a driver.') }}{% endif %}
+    </div>
+
+    <div class="stack">
+      <div class="card">
+        <div class="card-h"><div><h3>Fleet status</h3><div class="sub">{{ stats.n_vehicles }} vehicle{{ 's' if stats.n_vehicles != 1 }}</div></div><a class="btn btn-sm" href="#vehicles">Manage</a></div>
+        <div class="card-b">
+          {% if stats.n_vehicles %}
+          <div class="meter" role="img" aria-label="Fleet status">
+            {% if vc.available %}<span style="--v:{{ vc.available }};--c:var(--ok)"></span>{% endif %}
+            {% if vc.assigned %}<span style="--v:{{ vc.assigned }};--c:var(--info)"></span>{% endif %}
+            {% if vc.maintenance %}<span style="--v:{{ vc.maintenance }};--c:var(--bad)"></span>{% endif %}
+          </div>
+          <div class="legend"><span><i style="--c:var(--ok)"></i>{{ vc.available }} available</span><span><i style="--c:var(--info)"></i>{{ vc.assigned }} on a job</span><span><i style="--c:var(--bad)"></i>{{ vc.maintenance }} in maintenance</span></div>
+          {% else %}<p class="muted">No vehicles yet.</p>{% endif %}
+        </div>
+      </div>
+      <div class="card card-flush">
+        <div class="card-h"><div><h3>Recent trips</h3></div><a class="btn btn-sm" href="#trips">All trips</a></div>
+        {% if trips %}
+        <div class="mini-list">
+          {% for t in trips[:4] %}
+          <div class="mini-row">
+            <div class="l"><b>{{ t.from_location }} to {{ t.to_location }}</b><span>{{ t.driver_name }} &middot; {{ t.vehicle_number }}</span></div>
+            {{ badge(t.status) }}
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}{{ empty('route', 'No trips yet', 'Trips appear here once you assign a request.') }}{% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== VEHICLES ===================== -->
+<section class="pane" id="pane-vehicles">
+  <div class="ph">
+    <div><h1>Vehicles</h1><p>Your fleet and where each vehicle stands.</p></div>
+    <div class="ph-actions"><button class="btn btn-primary" data-open="vehicle-add">{{ icon('plus') }} Add vehicle</button></div>
+  </div>
+  <div class="card card-flush" data-filter-root>
+    {% if vehicles %}
+    {{ filters([('all','All',vehicles|length),('available','Available',vc.available),('assigned','Assigned',vc.assigned),('maintenance','Maintenance',vc.maintenance)], 'Search by name or plate') }}
+    <div class="tbl-wrap"><table class="tbl" id="tbl-vehicles">
+      <thead><tr><th>#</th><th>Vehicle</th><th>Number plate</th><th>Status</th><th class="num">Trips</th><th>Added</th><th data-noexport></th></tr></thead>
+      <tbody>
+        {% for v in vehicles %}
+        <tr data-item data-status="{{ v.status }}">
+          <td class="id">{{ v.id }}</td>
+          <td class="strong">{{ v.vehicle_name }}</td>
+          <td>{{ plate(v.vehicle_number) }}</td>
+          <td>{{ badge(v.status) }}</td>
+          <td class="num">{{ v.trip_count }}</td>
+          <td class="date">{{ v.created_at|dmy }}</td>
+          <td class="num"><div class="btn-row">
+            <button class="btn btn-sm btn-icon" title="Edit" aria-label="Edit {{ v.vehicle_name }}" data-open="vehicle-edit" data-action="{{ url_for('edit_vehicle', vid=v.id) }}"
+                    data-fill='{{ {"vehicle_name": v.vehicle_name, "vehicle_number": v.vehicle_number, "status": v.status}|tojson }}'>{{ icon('edit') }}</button>
+            <form method="post" action="{{ url_for('delete_vehicle', vid=v.id) }}" data-confirm="{{ v.vehicle_name }} ({{ v.vehicle_number }}) will be removed from your fleet." data-confirm-title="Delete this vehicle?" data-confirm-ok="Delete vehicle">
+              {{ csrf() }}<button class="btn btn-sm btn-icon btn-danger" type="submit" title="Delete" aria-label="Delete {{ v.vehicle_name }}">{{ icon('trash') }}</button>
+            </form>
+          </div></td>
+        </tr>
+        {% endfor %}
+        {{ none_row(7) }}
+      </tbody>
+    </table></div>
+    {% else %}{% call empty('truck', 'No vehicles yet', 'Add your first vehicle to start assigning trips.') %}<button class="btn btn-primary" data-open="vehicle-add">{{ icon('plus') }} Add vehicle</button>{% endcall %}{% endif %}
+  </div>
+</section>
+
+<!-- ===================== DRIVERS ===================== -->
+<section class="pane" id="pane-drivers">
+  <div class="ph">
+    <div><h1>Drivers</h1><p>Driver accounts, licences and availability.</p></div>
+    <div class="ph-actions"><button class="btn btn-primary" data-open="driver-add">{{ icon('plus') }} Add driver</button></div>
+  </div>
+  <div class="card card-flush" data-filter-root>
+    {% if drivers %}
+    {% set busy = drivers|selectattr('active_trips')|list|length %}
+    {{ filters([('all','All',drivers|length),('available','Available',drivers|length - busy),('busy','On a trip',busy)], 'Search by name, phone or licence') }}
+    <div class="tbl-wrap"><table class="tbl" id="tbl-drivers">
+      <thead><tr><th>Driver</th><th>Phone</th><th>Licence</th><th>Availability</th><th class="num">Trips</th><th>Joined</th><th data-noexport></th></tr></thead>
+      <tbody>
+        {% for d in drivers %}
+        <tr data-item data-status="{{ 'busy' if d.active_trips else 'available' }}">
+          <td><div class="person">{{ avatar(d.name) }}<div class="meta"><strong>{{ d.name }}</strong><span>{{ d.email or 'No login linked' }}</span></div></div></td>
+          <td>{{ d.phone }}</td>
+          <td>{{ d.license_number }}</td>
+          <td>{{ badge('busy', 'On a trip') if d.active_trips else badge('available') }}</td>
+          <td class="num">{{ d.total_trips }}</td>
+          <td class="date">{{ d.created_at|dmy }}</td>
+          <td class="num"><div class="btn-row">
+            <button class="btn btn-sm btn-icon" title="Edit" aria-label="Edit {{ d.name }}" data-open="driver-edit" data-action="{{ url_for('edit_driver', did=d.id) }}"
+                    data-fill='{{ {"name": d.name, "phone": d.phone, "license_number": d.license_number}|tojson }}'>{{ icon('edit') }}</button>
+            <form method="post" action="{{ url_for('delete_driver', did=d.id) }}" data-confirm="{{ d.name }}'s profile and login will be removed. Drivers with trip history cannot be deleted." data-confirm-title="Delete this driver?" data-confirm-ok="Delete driver">
+              {{ csrf() }}<button class="btn btn-sm btn-icon btn-danger" type="submit" title="Delete" aria-label="Delete {{ d.name }}">{{ icon('trash') }}</button>
+            </form>
+          </div></td>
+        </tr>
+        {% endfor %}
+        {{ none_row(7) }}
+      </tbody>
+    </table></div>
+    {% else %}{% call empty('user', 'No drivers yet', 'Add a driver to create their login and start assigning trips.') %}<button class="btn btn-primary" data-open="driver-add">{{ icon('plus') }} Add driver</button>{% endcall %}{% endif %}
+  </div>
+</section>
+
+<!-- ===================== REQUESTS ===================== -->
+<section class="pane" id="pane-requests">
+  <div class="ph"><div><h1>Shipment requests</h1><p>Assign a driver and vehicle to each pending request.</p></div></div>
+  <div class="card card-flush" data-filter-root>
+    {% if reqs %}
+    {{ filters([('all','All',reqs|length),('pending','Pending',rc.pending),('assigned','Assigned',rc.assigned),('completed','Completed',rc.completed)], 'Search by client, place or goods') }}
+    <div class="tbl-wrap"><table class="tbl" id="tbl-requests">
+      <thead><tr><th>#</th><th>Client</th><th>Route</th><th>Goods</th><th>Status</th><th>Requested</th><th data-noexport></th></tr></thead>
+      <tbody>
+        {% for r in reqs %}
+        <tr data-item data-status="{{ r.status }}">
+          <td class="id">{{ r.id }}</td>
+          <td><div class="person">{{ avatar(r.name) }}<div class="meta"><strong>{{ r.name }}</strong><span>{{ r.customer_phone or 'No phone' }}</span></div></div></td>
+          <td>{{ route(r.from_location, r.to_location) }}</td>
+          <td>{{ r.goods_type }}</td>
+          <td>{{ badge(r.status) }}</td>
+          <td class="date">{{ r.created_at|dmy }}</td>
+          <td class="num">
+            {% if r.status == 'pending' %}
+            <button class="btn btn-primary btn-sm" data-open="assign-dialog" data-action="{{ url_for('assign_trip', req_id=r.id) }}"
+                    data-fill='{{ {"summary_client": r.name, "summary_route": r.from_location ~ " to " ~ r.to_location, "summary_goods": r.goods_type}|tojson }}'>{{ icon('zap', 'ic-sm') }} Assign</button>
+            {% else %}<span class="faint">Done</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        {{ none_row(7) }}
+      </tbody>
+    </table></div>
+    {% else %}{{ empty('package', 'No requests yet', 'Client requests will show up here as they come in.') }}{% endif %}
+  </div>
+</section>
+
+<!-- ===================== TRIPS ===================== -->
+<section class="pane" id="pane-trips">
+  <div class="ph"><div><h1>Trips</h1><p>Every assigned trip and its latest status from the driver.</p></div></div>
+  <div class="card card-flush" data-filter-root>
+    {% if trips %}
+    {% set tc = {'assigned': trips|selectattr('status','equalto','assigned')|list|length, 'in_progress': trips|selectattr('status','equalto','in_progress')|list|length, 'completed': stats.completed_trips} %}
+    {{ filters([('all','All',trips|length),('assigned','Assigned',tc.assigned),('in_progress','In progress',tc.in_progress),('completed','Completed',tc.completed)], 'Search by client, driver or plate') }}
+    <div class="tbl-wrap"><table class="tbl" id="tbl-trips">
+      <thead><tr><th>#</th><th>Client</th><th>Route</th><th>Driver</th><th>Vehicle</th><th>Status</th><th>Assigned</th><th>Last update</th></tr></thead>
+      <tbody>
+        {% for t in trips %}
+        <tr data-item data-status="{{ t.status }}">
+          <td class="id">{{ t.id }}</td>
+          <td><div class="person">{{ avatar(t.name) }}<div class="meta"><strong>{{ t.name }}</strong><span>{{ t.customer_phone or 'No phone' }}</span></div></div></td>
+          <td>{{ route(t.from_location, t.to_location) }}</td>
+          <td>{{ t.driver_name }}</td>
+          <td>{{ plate(t.vehicle_number) }}</td>
+          <td>{{ badge(t.status) }}</td>
+          <td class="date">{{ t.created_at|dmy }}</td>
+          <td class="date">{{ t.updated_at|dmyt }}</td>
+        </tr>
+        {% endfor %}
+        {{ none_row(8) }}
+      </tbody>
+    </table></div>
+    {% else %}{{ empty('route', 'No trips yet', 'Assign a pending request to create the first trip.') }}{% endif %}
+  </div>
+</section>
+
+<!-- ===================== CUSTOMERS ===================== -->
+<section class="pane" id="pane-customers">
+  <div class="ph"><div><h1>Customers</h1><p>Clients who have registered to book pickups.</p></div></div>
+  <div class="card card-flush" data-filter-root>
+    {% if customers %}
+    {{ filters(none, 'Search by name, email or phone', 'tbl-customers', 'customers') }}
+    <div class="tbl-wrap"><table class="tbl" id="tbl-customers">
+      <thead><tr><th>Customer</th><th>Phone</th><th class="num">Requests</th><th>Registered</th></tr></thead>
+      <tbody>
+        {% for c in customers %}
+        <tr data-item>
+          <td><div class="person">{{ avatar(c.name) }}<div class="meta"><strong>{{ c.name }}</strong><span>{{ c.email }}</span></div></div></td>
+          <td>{{ c.phone or '—' }}</td>
+          <td class="num">{{ c.request_count }}</td>
+          <td class="date">{{ c.created_at|dmy }}</td>
+        </tr>
+        {% endfor %}
+        {{ none_row(4) }}
+      </tbody>
+    </table></div>
+    {% else %}{{ empty('users', 'No customers yet', 'Clients appear here after they create an account.') }}{% endif %}
+  </div>
+</section>
+
+<!-- ===================== REPORTS ===================== -->
+<section class="pane" id="pane-reports">
+  {% set unpriced = trips|selectattr('price','none')|list|length %}
+  <div class="ph"><div><h1>Reports</h1><p>Set a price for each trip and track what has been paid.</p></div></div>
+  <div class="kpis">
+    {{ kpi('Total billed', (stats.revenue_paid + stats.outstanding)|inr(0), (trips|length - unpriced) ~ ' priced trip(s)', 'receipt', 't-info') }}
+    {{ kpi('Collected', stats.revenue_paid|inr(0), 'Marked as paid', 'check-circle', 't-ok') }}
+    {{ kpi('Outstanding', stats.outstanding|inr(0), 'Waiting on clients', 'rupee', 't-bad' if stats.outstanding > 0 else 't-ok') }}
+    {{ kpi('Not priced', unpriced, 'Trips without a price', 'alert', 't-warn', alert=(unpriced > 0)) }}
+  </div>
+  <div class="card card-flush" data-filter-root>
+    {% if trips %}
+    {% set n_paid = trips|selectattr('payment_status','equalto','paid')|rejectattr('price','none')|list|length %}
+    {% set n_unpaid = (trips|length) - unpriced - n_paid %}
+    {{ filters([('all','All',trips|length),('unpriced','Not priced',unpriced),('unpaid','Unpaid',n_unpaid),('paid','Paid',n_paid)], 'Search by client, route or driver', 'tbl-reports', 'fleet-billing') }}
+    <div class="tbl-wrap"><table class="tbl" id="tbl-reports">
+      <thead><tr><th>#</th><th>Client</th><th>Route</th><th>Driver</th><th>Trip</th><th>Price (₹)</th><th>Payment</th><th data-noexport></th></tr></thead>
+      <tbody>
+        {% for t in trips %}
+        {% set pkey = 'unpriced' if t.price is none else t.payment_status %}
+        <tr data-item data-status="{{ pkey }}">
+          <td class="id">{{ t.id }}</td>
+          <td class="strong">{{ t.name }}</td>
+          <td>{{ route(t.from_location, t.to_location) }}</td>
+          <td>{{ t.driver_name }}</td>
+          <td>{{ badge(t.status) }}</td>
+          <td>
+            <form class="cell-form" method="post" action="{{ url_for('update_trip_price', trip_id=t.id) }}">
+              {{ csrf() }}
+              <input class="inp inp-sm" type="number" name="price" placeholder="0.00" step="0.01" min="0" max="99999999" value="{{ t.price if t.price is not none else '' }}" aria-label="Price for trip {{ t.id }}">
+              <button class="btn btn-sm" type="submit">Save</button>
+            </form>
+          </td>
+          <td>{% if t.price is none %}<span class="faint">Not priced</span>{% else %}{{ badge(t.payment_status) }}{% endif %}</td>
+          <td class="num">
+            {% if t.price is not none %}
+            <form method="post" action="{{ url_for('update_payment_status', trip_id=t.id) }}" style="display:inline">
+              {{ csrf() }}<input type="hidden" name="payment_status" value="{{ 'unpaid' if t.payment_status == 'paid' else 'paid' }}">
+              <button class="btn btn-sm {{ '' if t.payment_status == 'paid' else 'btn-ok' }}" type="submit">{{ 'Mark unpaid' if t.payment_status == 'paid' else 'Mark paid' }}</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        {{ none_row(8) }}
+      </tbody>
+    </table></div>
+    {% else %}{{ empty('chart', 'Nothing to report yet', 'Billing appears here once trips have been assigned.') }}{% endif %}
+  </div>
+</section>
+{% endblock %}
+
+{% block dialogs %}
+<dialog class="modal" id="vehicle-add">
+  <form method="post" action="{{ url_for('add_vehicle') }}">
+    {{ csrf() }}
+    {{ modal_head('Add a vehicle', 'It becomes available for assignment straight away.') }}
+    <div class="modal-b">
+      <div class="field"><label for="va-name">Vehicle name</label><input class="inp" id="va-name" name="vehicle_name" placeholder="e.g. Tata Ace" required maxlength="100"></div>
+      <div class="form-grid">
+        <div class="field"><label for="va-plate">Number plate</label><input class="inp" id="va-plate" name="vehicle_number" placeholder="MH-12-AB-1234" required maxlength="50"></div>
+        <div class="field"><label for="va-status">Status</label><select class="inp" id="va-status" name="status"><option value="available">Available</option><option value="maintenance">Maintenance</option></select></div>
+      </div>
+    </div>
+    <div class="modal-f"><button type="button" class="btn" data-close data-no-lock>Cancel</button><button class="btn btn-primary" type="submit">Add vehicle</button></div>
+  </form>
+</dialog>
+
+<dialog class="modal" id="vehicle-edit">
+  <form method="post" action="">
+    {{ csrf() }}
+    {{ modal_head('Edit vehicle') }}
+    <div class="modal-b">
+      <div class="field"><label for="ve-name">Vehicle name</label><input class="inp" id="ve-name" name="vehicle_name" required maxlength="100"></div>
+      <div class="form-grid">
+        <div class="field"><label for="ve-plate">Number plate</label><input class="inp" id="ve-plate" name="vehicle_number" required maxlength="50"></div>
+        <div class="field"><label for="ve-status">Status</label><select class="inp" id="ve-status" name="status"><option value="available">Available</option><option value="assigned">Assigned</option><option value="maintenance">Maintenance</option></select></div>
+      </div>
+    </div>
+    <div class="modal-f"><button type="button" class="btn" data-close data-no-lock>Cancel</button><button class="btn btn-primary" type="submit">Save changes</button></div>
+  </form>
+</dialog>
+
+<dialog class="modal" id="driver-add">
+  <form method="post" action="{{ url_for('add_driver') }}">
+    {{ csrf() }}
+    {{ modal_head('Add a driver', 'This also creates the driver’s login for the driver portal.') }}
+    <div class="modal-b">
+      <div class="form-grid">
+        <div class="field span-2"><label for="da-name">Full name</label><input class="inp" id="da-name" name="name" placeholder="Driver name" required maxlength="100"></div>
+        <div class="field"><label for="da-phone">Phone</label><input class="inp" id="da-phone" name="phone" type="tel" placeholder="98765 43210" required maxlength="20"></div>
+        <div class="field"><label for="da-lic">Licence number</label><input class="inp" id="da-lic" name="license_number" placeholder="DL-2024-001" required maxlength="50"></div>
+        <div class="field"><label for="da-email">Login email</label><input class="inp" id="da-email" name="email" type="email" placeholder="driver@company.com" required maxlength="150"></div>
+        <div class="field"><label for="da-pass">Temporary password</label><input class="inp" id="da-pass" name="password" type="password" minlength="6" placeholder="At least 6 characters" autocomplete="new-password" required></div>
+      </div>
+    </div>
+    <div class="modal-f"><button type="button" class="btn" data-close data-no-lock>Cancel</button><button class="btn btn-primary" type="submit">Add driver</button></div>
+  </form>
+</dialog>
+
+<dialog class="modal" id="driver-edit">
+  <form method="post" action="">
+    {{ csrf() }}
+    {{ modal_head('Edit driver') }}
+    <div class="modal-b">
+      <div class="field"><label for="de-name">Full name</label><input class="inp" id="de-name" name="name" required maxlength="100"></div>
+      <div class="form-grid">
+        <div class="field"><label for="de-phone">Phone</label><input class="inp" id="de-phone" name="phone" type="tel" required maxlength="20"></div>
+        <div class="field"><label for="de-lic">Licence number</label><input class="inp" id="de-lic" name="license_number" required maxlength="50"></div>
+      </div>
+    </div>
+    <div class="modal-f"><button type="button" class="btn" data-close data-no-lock>Cancel</button><button class="btn btn-primary" type="submit">Save changes</button></div>
+  </form>
+</dialog>
+
+<dialog class="modal" id="assign-dialog">
+  <form method="post" action="">
+    {{ csrf() }}
+    {{ modal_head('Assign a trip', 'Choose who will drive and which vehicle to use.') }}
+    <div class="modal-b">
+      <div class="modal-sum">
+        <span><b data-out="summary_client"></b> wants to ship <b data-out="summary_goods"></b></span>
+        <span data-out="summary_route"></span>
+      </div>
+      <div class="field">
+        <label for="as-driver">Driver</label>
+        <select class="inp" id="as-driver" name="driver_id" required>
+          <option value="">Choose a driver</option>
+          {% for d in all_drivers %}<option value="{{ d.id }}">{{ d.name }} · {{ d.phone }}{% if d.active_trips %} · {{ d.active_trips }} active trip{{ 's' if d.active_trips != 1 }}{% endif %}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="as-vehicle">Vehicle</label>
+        <select class="inp" id="as-vehicle" name="vehicle_id" required>
+          <option value="">Choose an available vehicle</option>
+          {% for v in avail_vehicles %}<option value="{{ v.id }}">{{ v.vehicle_name }} · {{ v.vehicle_number }}</option>{% endfor %}
+        </select>
+      </div>
+      {% if not avail_vehicles %}<div class="notice warn" style="margin:0">{{ icon('alert') }}<span>No vehicles are available right now. Free one up or set a vehicle back to available.</span></div>{% endif %}
+      {% if not all_drivers %}<div class="notice warn" style="margin:0">{{ icon('alert') }}<span>Add a driver first so there is someone to assign.</span></div>{% endif %}
+    </div>
+    <div class="modal-f"><button type="button" class="btn" data-close data-no-lock>Cancel</button><button class="btn btn-primary" type="submit" {{ 'disabled' if not avail_vehicles or not all_drivers }}>Confirm assignment</button></div>
+  </form>
+</dialog>
+{% endblock %}

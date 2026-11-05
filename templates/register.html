@@ -1,0 +1,36 @@
+{% extends "auth_base.html" %}
+{% block title %}Create account{% endblock %}
+{% block form %}
+<h2>Create your account</h2>
+<p class="lead">Register as a client to request pickups and track your shipments.</p>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for c, m in messages %}<div class="alert {{ c }}" role="alert" style="margin-bottom:16px">{{ icon('alert-circle' if c == 'error' else 'check-circle') }}<span>{{ m }}</span></div>{% endfor %}
+{% endwith %}
+
+<form method="post">
+  {{ csrf() }}
+  <div class="field">
+    <label for="name">Full name</label>
+    <input class="inp" id="name" type="text" name="name" placeholder="Asha Patil" autocomplete="name" value="{{ form.name if form }}" required autofocus>
+  </div>
+  <div class="field">
+    <label for="email">Email address</label>
+    <input class="inp" id="email" type="email" name="email" placeholder="you@company.com" autocomplete="email" value="{{ form.email if form }}" required>
+  </div>
+  <div class="field">
+    <label for="phone">Phone number <span class="faint" style="font-weight:400">(optional)</span></label>
+    <input class="inp" id="phone" type="tel" name="phone" placeholder="98765 43210" autocomplete="tel" value="{{ form.phone if form }}">
+  </div>
+  <div class="field">
+    <label for="password">Password</label>
+    <div class="input-icon">
+      <input class="inp" id="password" type="password" name="password" placeholder="At least 6 characters" autocomplete="new-password" minlength="6" required>
+      <button type="button" data-reveal aria-label="Show password">{{ icon('eye') }}</button>
+    </div>
+  </div>
+  <button class="btn btn-primary btn-lg btn-block" type="submit">Create account</button>
+</form>
+
+<p class="auth-foot">Already registered? <a href="{{ url_for('login') }}">Sign in</a></p>
+{% endblock %}

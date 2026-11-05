@@ -1,0 +1,48 @@
+{# Reusable UI pieces. Import with: {% from "_ui.html" import icon, badge, ... %} #}
+
+{% macro icon(name, cls='') %}<svg class="ic {{ cls }}" aria-hidden="true"><use href="#i-{{ name }}"/></svg>{% endmacro %}
+
+{% macro csrf() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endmacro %}
+
+{% macro badge(status, label=none) %}<span class="badge b-{{ status }}">{{ label if label else status|status_label }}</span>{% endmacro %}
+
+{% macro plate(number) %}<span class="plate">{{ number }}</span>{% endmacro %}
+
+{% macro route(a, b) %}<span class="route"><b>{{ a }}</b><i></i><b>{{ b }}</b></span>{% endmacro %}
+
+{% macro avatar(name, large=false) %}<span class="av{{ ' av-lg' if large }}" style="--h:{{ name|hue }}">{{ name|initials }}</span>{% endmacro %}
+
+{# stage = index of the current step; stage == steps|length means every step is done #}
+{% macro stepper(steps, stage) %}
+<ol class="steps" aria-label="Progress">
+  {% for s in steps %}
+  <li class="step {{ 'is-done' if loop.index0 < stage else ('is-current' if loop.index0 == stage else '') }}">{{ s }}</li>
+  {% endfor %}
+</ol>
+{% endmacro %}
+
+{% macro empty(ico, title, text='') %}
+<div class="empty">
+  <div class="empty-ico">{{ icon(ico) }}</div>
+  <strong>{{ title }}</strong>
+  {% if text %}<p>{{ text }}</p>{% endif %}
+  {{ caller() if caller else '' }}
+</div>
+{% endmacro %}
+
+{% macro kpi(label, value, sub='', ico='box', tone='', alert=false) %}
+<div class="card kpi{{ ' is-alert' if alert }}">
+  <div class="kpi-top"><span>{{ label }}</span><span class="kpi-ico {{ tone }}">{{ icon(ico) }}</span></div>
+  <div class="kpi-val">{{ value }}</div>
+  {% if sub %}<div class="kpi-sub">{{ sub }}</div>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro modal_head(title, text='') %}
+<div class="modal-h">
+  <div><h3>{{ title }}</h3>{% if text %}<p>{{ text }}</p>{% endif %}</div>
+  <button type="button" class="btn btn-ghost btn-icon btn-sm" data-close aria-label="Close">{{ icon('x') }}</button>
+</div>
+{% endmacro %}
+
+{% macro maps_url(a, b) %}https://www.google.com/maps/dir/?api=1&origin={{ a|urlencode }}&destination={{ b|urlencode }}&travelmode=driving{% endmacro %}
